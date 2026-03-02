@@ -1,6 +1,8 @@
 #include "taskgen.h"
 #include "dag_transformer.h"
 #include <iostream>
+#include <iomanip>
+#include "scheduler.h"
 
 int main() {
     int t_n;      // tasks per task set
@@ -31,6 +33,21 @@ int main() {
         transformer.buildLattice();   // First, build the security lattice
         transformer.buildRelations(); // Then, build the lookup table based on the lattice
         transformer.transformAndPrintBySecurityLevel();
+
+        // Create a scheduler for each task set:
+        Scheduler scheduler(taskSets[i]);
+        
+        // Initialize blocking parameters
+        scheduler.initializeBlockingParameters();
+        scheduler.printBlockingParameters();
+
+        //step 2:
+
+        bool result = scheduler.isSchedulable();
+        if (!result)
+            std::cout << "Task Set " << i + 1 << " NOT schedulable\n";
+        else
+            std::cout << "Task Set " << i + 1 << " schedulable\n";
     }
 
 

@@ -44,7 +44,7 @@ Task TaskGenerator::generateTask(double utilization) {
     Task task;
 
     // Random period (continuous)
-    task.T = randomDouble(10.0, 1000.0);
+    task.T = randomDouble(10.0, 20.0);
 
     // Execution time from utilization
     task.C = utilization * task.T;

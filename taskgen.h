@@ -12,6 +12,10 @@ struct Task {
     int S;      // Security parameter S(tau_i)
     double q_td;   // teardown overhead
     double q_su;   // startup overhead
+
+    //Defining task parameters needed for the scheduler class
+    double beta;
+    int cnt;
 };
 
 using TaskSet = std::vector<Task>;
