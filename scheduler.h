@@ -2,42 +2,42 @@
 #define SCHEDULER_H
 
 #include <vector>
-#include "taskgen.h" // Assumes Task struct is defined here
+#include "taskgen.h"
+#include "security_relations.h"
 
 class Scheduler {
 public:
-    // Constructor takes a reference to a task set (vector of Tasks)
-    explicit Scheduler(std::vector<Task>& taskSet);
+    // constructor
+    explicit Scheduler(std::vector<Task>& taskSet, const SecurityRelations& secRel);
 
-    // Step 1: Initialize blocking parameters
-    // For each task_i in Gamma:
-    //   beta_i = C_i + q_i^td
-    //   cnt_i = 1
     void initializeBlockingParameters();
     void printBlockingParameters() const;
 
     double computeDBF(double L) const;
-    std::vector<double> generateFeasibilitySet(double feasibilityBound) const;
-    //bool isSchedulable(double feasibilityBound);
     bool isSchedulable();
 
-
-
-    //helper functions
     double computeDmax() const;
     double computeFeasibilityBound() const;
 
     std::vector<double> generateTestingSet1() const;
     std::vector<double> generateTestingSet2() const;
 
-
-
-
-
-
-
 private:
     std::vector<Task>& taskSet;
+
+    const SecurityRelations& securityRelations;
+    
+    bool adjustBlockingParameters(double L, double slack);
+    int calculateCnt(const Task& task);
+    int cnt;
+
+    //helper functions
+    double dbf(const Task& task, double L) const;
+    double totalDBF(double L) const;
+    double computeBlocking(double L) const;
+    void adjustBlocking(double L);
+    
+
 };
 
-#endif // SCHEDULER_H
+#endif

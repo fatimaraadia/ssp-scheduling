@@ -1,26 +1,17 @@
 #include "scheduler.h"
 #include <iostream>
-#include <algorithm>
 #include <cmath>
+#include <algorithm>
+#include "testing_set.h"
 
-Scheduler::Scheduler(std::vector<Task>& taskSet)
-    : taskSet(taskSet) {
-}
 
-void Scheduler::initializeBlockingParameters() {
-    // Iterate through each task (tau_i) in the task set (Gamma)
-    for (auto& task : taskSet) {
-        // beta_i <- C_i + q_i^td (Fully non-preemptive upper bound)
-        // C_i: Worst Case Execution Time (wcet)
-        // q_i^td: Total Deferral Time (totalDeferral)
-        // Note: Ensure your Task struct has 'wcet' and 'totalDeferral' fields,
-        // or adjust these names to match your existing Task definition.
-        task.beta = task.C + task.q_td;
+//OLD CONSTRUCTOR:
+//Scheduler::Scheduler(std::vector<Task>& taskSet)
+//    : taskSet(taskSet) {}
 
-        // cnt_i <- 1
-        task.cnt = 1;
-    }
-}
+//NEW Constructor, with security relations table access
+Scheduler::Scheduler(std::vector<Task>& taskSet,
+                     const SecurityRelations& secRel): taskSet(taskSet),securityRelations(secRel) {}
 
 void Scheduler::printBlockingParameters() const {
     for (size_t i = 0; i < taskSet.size(); ++i) {
@@ -31,149 +22,172 @@ void Scheduler::printBlockingParameters() const {
     }
 }
 
-double Scheduler::computeDBF(double L) const {
-    double dbf = 0.0;
+/* ============================================================
+   STEP 1: Initialize β_i = C_i + q_i^td
+   ============================================================ */
+void Scheduler::initializeBlockingParameters()
+{
+    std::cout << "\n=== Initializing Blocking Parameters ===\n";
 
-    for (const auto& task : taskSet) {
-        if (L >= task.D) {
-            double jobs =
-                std::floor((L - task.D) / task.T) + 1.0;
+    for (auto& task : taskSet)
+    {
+        task.beta = task.C + task.q_td;
+        task.cnt  = 1;
 
-            dbf += jobs * task.C;
-        }
+        std::cout << "Task S=" << task.S
+                  << "  beta=" << task.beta << "\n";
     }
-
-    return dbf;
 }
 
-std::vector<double> Scheduler::generateFeasibilitySet(double feasibilityBound) const {
-    std::vector<double> Lset;
+/* ============================================================
+   DBF for constrained deadlines
+   ============================================================ */
+double Scheduler::dbf(const Task& task, double L) const
+{
+    if (L < task.D) return 0.0;
 
-    for (const auto& task : taskSet) {
-        for (double k = 0; ; ++k) {
-            double absDeadline = task.D + k * task.T;
-
-            if (absDeadline > feasibilityBound)
-                break;
-
-            Lset.push_back(absDeadline);
-        }
-    }
-
-    // remove duplicates
-    std::sort(Lset.begin(), Lset.end());
-    Lset.erase(std::unique(Lset.begin(), Lset.end()), Lset.end());
-
-    return Lset;
+    double jobs = std::floor((L - task.D) / task.T) + 1.0;
+    return jobs * task.C;
 }
 
-/* THIS IS PREV VERSION ; before splitting the testing sets
-
-bool Scheduler::isSchedulable(double feasibilityBound) {
-    auto Lset = generateFeasibilitySet(feasibilityBound);
-
-    for (double L : Lset) {
-        double dbf = computeDBF(L);
-        double slack = L - dbf;
-
-        std::cout << "L = " << L
-                  << " | DBF = " << dbf
-                  << " | Slack = " << slack
-                  << "\n";
-
-        if (slack < 0) {
-            return false;
-        }
-    }
-
-    return true;
-}
-    */
-
-double Scheduler::computeDmax() const {
-    double dmax = 0.0;
+/* ============================================================
+   Compute total DBF
+   ============================================================ */
+double Scheduler::totalDBF(double L) const
+{
+    double sum = 0.0;
     for (const auto& task : taskSet)
-        dmax = std::max(dmax, task.D);
-    return dmax;
+        sum += dbf(task, L);
+
+    return sum;
 }
 
-double Scheduler::computeFeasibilityBound() const {
-    double U = 0.0;
-    double Csum = 0.0;
+/* ============================================================
+   Compute blocking B(L)
+   A lower security task can be blocked by higher security ones
+   ============================================================ */
+double Scheduler::computeBlocking(double L) const
+{
+    double maxBlocking = 0.0;
 
-    for (const auto& task : taskSet) {
-        U += task.C / task.T;
-        Csum += task.C;
-    }
-
-    if (U >= 1.0)
-        return -1;  // immediately unschedulable
-
-    return Csum / (1.0 - U);
-}
-
-
-//The two testing sets:
-std::vector<double> Scheduler::generateTestingSet1() const {
-    std::vector<double> Lset;
-    double Dmax = computeDmax();
-
-    for (const auto& task : taskSet) {
-        for (int k = 0;; ++k) {
-            double t = task.D + k * task.T;
-            if (t > Dmax)
-                break;
-            Lset.push_back(t);
+    for (const auto& low : taskSet)
+    {
+        for (const auto& high : taskSet)
+        {
+            if (securityRelations.dominates(high.S, low.S) &&
+                high.S != low.S)
+            {
+                maxBlocking = std::max(maxBlocking, high.beta);
+            }
         }
     }
 
-    std::sort(Lset.begin(), Lset.end());
-    Lset.erase(std::unique(Lset.begin(), Lset.end()), Lset.end());
-    return Lset;
+    return maxBlocking;
 }
 
-std::vector<double> Scheduler::generateTestingSet2() const {
-    std::vector<double> Lset;
+/* ============================================================
+   Adjust β using slack and compute cnt
+   ============================================================ */
+void Scheduler::adjustBlocking(double L)
+{
+    std::cout << "\n=== Adjusting Blocking at L=" << L << " ===\n";
 
-    double Dmax = computeDmax();
-    double bound = computeFeasibilityBound();
+    double demand = totalDBF(L);
+    double slack  = L - demand;
 
-    if (bound < 0)
-        return Lset;
+    std::cout << "Total DBF = " << demand << "\n";
+    std::cout << "Slack     = " << slack  << "\n";
 
-    for (const auto& task : taskSet) {
-        for (int k = 0;; ++k) {
-            double t = task.D + k * task.T;
-
-            if (t > bound)
-                break;
-
-            if (t > Dmax)
-                Lset.push_back(t);
-        }
+    if (slack <= 0)
+    {
+        std::cout << "No slack available.\n";
+        return;
     }
 
-    std::sort(Lset.begin(), Lset.end());
-    Lset.erase(std::unique(Lset.begin(), Lset.end()), Lset.end());
-    return Lset;
+    for (auto& task : taskSet)
+    {
+        // Only adjust higher security tasks
+        bool blocksSomeone = false;
+        for (const auto& other : taskSet)
+        {
+            if (securityRelations.dominates(task.S, other.S) &&
+                task.S != other.S)
+            {
+                blocksSomeone = true;
+                break;
+            }
+        }
+
+        if (!blocksSomeone) continue;
+
+        double oldBeta = task.beta;
+
+        // STEP 1: reduce beta to slack
+        task.beta = std::min(task.beta, slack);
+
+        std::cout << "\nTask S=" << task.S << "\n";
+        std::cout << "  beta before = " << oldBeta << "\n";
+        std::cout << "  beta after  = " << task.beta << "\n";
+
+        // STEP 2: compute cnt
+        double numerator   = task.C - task.beta + task.q_td;
+        double denominator = task.beta - task.q_td - task.q_su;
+
+        std::cout << "  numerator   = " << numerator   << "\n";
+        std::cout << "  denominator = " << denominator << "\n";
+
+        if (denominator <= 0)
+        {
+            std::cout << "  denominator <= 0, forcing cnt=1\n";
+            task.cnt = 1;
+        }
+        else
+        {
+            double ratio = numerator / denominator;
+            task.cnt = std::ceil(ratio) + 1;
+        }
+
+        if (task.cnt < 1) task.cnt = 1;
+
+        std::cout << "  cnt = " << task.cnt << "\n";
+
+        // STEP 3: update beta after splitting
+        task.beta =
+            (task.C + task.q_td +
+             (task.cnt - 1) * task.q_su)
+            / task.cnt;
+
+        std::cout << "  beta after splitting = "
+                  << task.beta << "\n";
+    }
 }
 
-bool Scheduler::isSchedulable() {
-    auto T1 = generateTestingSet1();
-    auto T2 = generateTestingSet2();
+/* ============================================================
+   Main Schedulability Test
+   ============================================================ */
+bool Scheduler::isSchedulable()
+{
+    std::cout << "\n=== Starting Schedulability Test ===\n";
 
-    std::vector<double> testingSet;
-    testingSet.reserve(T1.size() + T2.size());
-    testingSet.insert(testingSet.end(), T1.begin(), T1.end());
-    testingSet.insert(testingSet.end(), T2.begin(), T2.end());
+    //std::vector<double> testingSet = generateTestingSet(taskSet);
+    std::vector<double> testingSet =
+    TestingSet::generateTestingSet(taskSet);
 
     for (double L : testingSet) {
-        double dbf = computeDBF(L);
-        double slack = L - dbf;
+        std::cout << "\nChecking L=" << L << "\n";
 
-        if (slack < -1e-9)
+        double demand = totalDBF(L);
+        double block  = computeBlocking(L);
+
+        std::cout << "Total DBF = " << demand
+                  << " | Blocking = " << block
+                  << " | Total = " << demand + block
+                  << " | L = " << L << "\n";
+
+        if (demand + block > L) {
+            std::cout << "Violation at L=" << L << "\n";
             return false;
+        }
     }
-
     return true;
 }

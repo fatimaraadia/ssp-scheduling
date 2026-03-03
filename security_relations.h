@@ -13,6 +13,8 @@ public:
 
     // Returns the pre-computed set of all Sj where Si is NOT <= Sj.
     const std::set<int>& getNonDominatingSet(int Si) const;
+    //for the whole table 
+    bool dominates(int Si, int Sj) const;
 
     // Prints the full lookup table for verification.
     void printTable() const;

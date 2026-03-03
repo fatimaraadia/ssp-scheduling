@@ -21,6 +21,9 @@ public:
     void buildLattice();
     void buildRelations();
 
+    const SecurityRelations& getSecurityRelations() const;
+
+
 private:
     // Defines the mapping from an integer security level to its properties
     const static std::map<int, SecurityContext> SECURITY_DEFINITIONS;
@@ -30,6 +33,7 @@ private:
     mutable Lattice securityLattice; // Mutable to allow building in a const method context if needed
     mutable std::unique_ptr<SecurityRelations> securityRelations; // Lookup table
     void printGroupedTasks(const std::map<int, std::vector<Task>>& securityClasses) const;
+
 };
 
 #endif // DAG_TRANSFORMER_H

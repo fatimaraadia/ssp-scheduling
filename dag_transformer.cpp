@@ -88,3 +88,7 @@ void DAGTransformer::printGroupedTasks(const std::map<int, std::vector<Task>>& s
         std::cout << "\n";
     }
 }
+
+const SecurityRelations& DAGTransformer::getSecurityRelations() const {
+    return *securityRelations;
+}
